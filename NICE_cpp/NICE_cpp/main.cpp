@@ -32,9 +32,9 @@ int main() {
 	//input_y.close();
 	//input_k.close();
 	//input_posterior.close();
-	//NICE.close();
 	
-
-
+	
+	
+	NICE.close();
 	return 0;
 }

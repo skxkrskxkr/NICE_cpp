@@ -43,7 +43,6 @@ input_MS::input_MS(Eigen::MatrixXd& Y, int row_idx, int col) {  //check 0 = snp,
     }
     mean = sum / count;
     int check = 1;
-
     if (check == 0) {
         for (int i = 0; i < count; i++) {
             residual_vec.push_back(element_vec[i] - mean);
@@ -202,12 +201,15 @@ void inputMS2(std::string snp_p, std::string pheno_p) {
     if (!pheno.is_open()) {
         std::cout << "pheno file is not exist" << std::endl;
     }
+    
     int y_row = count_matrix_row(pheno); int y_col = count_matrix_col(pheno);
     Eigen::MatrixXd Y = read_mat(pheno, y_row, y_col);
+    Eigen::ArrayXd P_val;
     pheno.close();
 
 
     while (!snp.eof()) { //snp이랑 pheno를 거꾸로 하면 해결!
+        P_val = Eigen::ArrayXd(y_row);
         std::cout << line_num << std::endl;
         line_num++;
         std::vector<double> betas;
@@ -247,13 +249,14 @@ void inputMS2(std::string snp_p, std::string pheno_p) {
                     //std::cout << "beta = " << beta << std::endl;
                     //std::cout << "zscore =" << zsc << std::endl;
                     p_test << p_val;
+                    P_val(i) = p_val;
                     inputMS << beta << " " << beta / zsc;
                     betas.push_back(beta); std_.push_back(1.0 / std::pow((beta / zsc), 2));
                     delete pheno_c;
                 
             }
-            computeMvaluesMCMC(betas, std_, 1000000, pheno_num, temp, Y); //1000000 is samplenumber;
-
+            computeMvaluesMCMC(betas, std_, 1000000, pheno_num, temp, Y, P_val); //1000000 is samplenumber;
+            
             delete snp_c;
         }
     }
@@ -262,7 +265,8 @@ void inputMS2(std::string snp_p, std::string pheno_p) {
     snp.close();
 }
 
-void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X_line, Eigen::MatrixXd Y, int seed) {
+void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X_line, Eigen::MatrixXd& Y,
+                                                                                                                                            Eigen::ArrayXd& P_val, int seed) {
     int maxNumFlip = 1;
 
     maxNumFlip = (std::floor(0.1 * pheno_num) > 1) ? std::floor(0.1 * pheno_num) : 1;
@@ -367,16 +371,25 @@ void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, i
     for (int i = 0; i < pheno_num; i++) {
         double mvalue = (double)accumCntH1[i] / (accumCntH0[i] + accumCntH1[i]);
         //mvalues_.add(mvalue);
-        //if (mvalue < 0.5) {
+        if (mvalue < 0.5) {
             K.row(k_size) = Y.row(i);
             k_size++;
-        //}
+        }
     }
 
-    K.resize(k_size, Y.cols());
-    Eigen::MatrixXd cov_mat = cov(normMe(K));
-    Eigen::MatrixXd X = read_mat(X_line, Y.cols());
-    emma(X, Y, cov_mat, NICE);
+    if (k_size >= 10) {
+        K.resize(k_size, Y.cols());
+        K = normMe(K);
+        Eigen::MatrixXd cov_mat = cov(K);
+        Eigen::MatrixXd X = read_mat(X_line, Y.cols());
+        emma(X, Y, cov_mat, NICE);
+    }
+    else {
+        for (int i = 0; i < Y.rows(); NICE << " ", i++) {
+            NICE << P_val(i);
+        }
+        NICE << "\n";
+    }
 
 }
 
@@ -450,14 +463,14 @@ Eigen::MatrixXd read_mat(std::string X, int col) {
     std::string token;
     std::stringstream stream;
     Eigen::MatrixXd ret_mat = Eigen::MatrixXd(1, col);
-        stream.str(X);
-        for (int j = 0; j < col; j++) { //col
-            stream >> token;
-            ret_mat(1, j) = std::stold(token);
-        }
-        stream.clear();  //for coursor reset
+    stream.str(X);
+    for (int j = 0; j < col; j++) { //col
+        stream >> token;
+        ret_mat(0, j) = std::stold(token);
+    }
+    stream.clear();  //for coursor reset
 
-        return ret_mat;
+    return ret_mat;
 }
 
 
@@ -690,12 +703,12 @@ void emma(Eigen::MatrixXd& X, Eigen::MatrixXd& Y, Eigen::MatrixXd& K, std::ofstr
     out << "\n";
 }
 
-Eigen::MatrixXd cov(Eigen::MatrixXd mat) {
+Eigen::MatrixXd cov(Eigen::MatrixXd& mat) {
     Eigen::MatrixXd centered = mat.rowwise() - mat.colwise().mean();
     return (centered.adjoint() * centered) / double(mat.rows() - 1);
 }
 
-Eigen::MatrixXd normMe(Eigen::MatrixXd mat) {
+Eigen::MatrixXd normMe(Eigen::MatrixXd& mat) {
     Eigen::ArrayXd std = (((mat.colwise() - mat.rowwise().mean()).rowwise().squaredNorm()) / (mat.cols() - 1)).cwiseSqrt();
     mat = (mat.colwise() - mat.rowwise().mean());
     for (int i = 0; i < std.size(); i++) {

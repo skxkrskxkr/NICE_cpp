@@ -82,7 +82,7 @@ long double t_value(boost::math::students_t_distribution<double> t_dist, long do
 void inputMS(std::string snp, std::string pheno);
 void inputMS2(std::string snp, std::string pheno);
 
-void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X, Eigen::MatrixXd Y, int seed = 0);
+void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X, Eigen::MatrixXd& Y, Eigen::ArrayXd& P_val, int seed = 0);
 
 double observationLogLikelihood(std::vector<double>& betas, std::vector<double>& std_, std::vector<int>& H1, int numH1);
 double makeRandomDouble();
@@ -90,7 +90,7 @@ int makeRandomInteger(int number);
 
 Eigen::MatrixXd read_mat(std::ifstream& input_file, int row, int col);
 Eigen::MatrixXd read_mat(std::string X, int col);
-Eigen::MatrixXd cov(Eigen::MatrixXd mat);
-Eigen::MatrixXd normMe(Eigen::MatrixXd mat);
+Eigen::MatrixXd cov(Eigen::MatrixXd& mat);
+Eigen::MatrixXd normMe(Eigen::MatrixXd& mat);
 Eigen::MatrixXd cbind(Eigen::MatrixXd& a, Eigen::MatrixXd& b);
 
