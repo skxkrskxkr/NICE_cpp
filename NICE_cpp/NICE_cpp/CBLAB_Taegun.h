@@ -20,6 +20,8 @@
 
 static std::mt19937 ran;
 static std::ofstream NICE("NICE.txt");
+static double log_sqrt2pi = 0.5 * std::log(2 * std::atan(1) * 4);
+
 
 class REMLE {
 public:
@@ -48,6 +50,7 @@ public:
     input_MS();
     input_MS(std::string arr, int check);
     input_MS(Eigen::MatrixXd& Y, int row_idx, int col);
+    input_MS(double** Y, int row_idx, int col);
 
 };
 class Metasoft {
@@ -81,10 +84,15 @@ long double t_value(boost::math::students_t_distribution<double> t_dist, long do
 
 void inputMS(std::string snp, std::string pheno);
 void inputMS2(std::string snp, std::string pheno);
+void inputMS3(std::string snp, std::string pheno);
+
 
 void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X, Eigen::MatrixXd& Y, Eigen::ArrayXd& P_val, int seed = 0);
+void computeMvaluesMCMC2(double* betas, double* std_, double* std_tm, double* std_tmm, double* std_logt, double* logProbNullPoints_, int sample, int pheno_num, std::string X, Eigen::MatrixXd& Y, Eigen::ArrayXd& P_val, int seed = 0);
 
 double observationLogLikelihood(std::vector<double>& betas, std::vector<double>& std_, std::vector<int>& H1, int numH1);
+double observationLogLikelihood(double* betas, double* std_,double* std_tm, double* std_tmm, double* std_logt, double* logProbNullPoints_, int* H1, int numH1, int n_size);
+
 double makeRandomDouble();
 int makeRandomInteger(int number);
 
@@ -92,5 +100,7 @@ Eigen::MatrixXd read_mat(std::ifstream& input_file, int row, int col);
 Eigen::MatrixXd read_mat(std::string X, int col);
 Eigen::MatrixXd cov(Eigen::MatrixXd& mat);
 Eigen::MatrixXd normMe(Eigen::MatrixXd& mat);
+
 Eigen::MatrixXd cbind(Eigen::MatrixXd& a, Eigen::MatrixXd& b);
 
+double** read_mat_darray(std::ifstream& input_file, int row, int col);

@@ -60,6 +60,32 @@ input_MS::input_MS(Eigen::MatrixXd& Y, int row_idx, int col) {  //check 0 = snp,
     }
 }
 
+input_MS::input_MS(double** Y, int row_idx, int col) {  //check 0 = snp, check 1 = pheno
+    mean = 0.0; sum = 0.0; count = 0; squared_residual_sum = 0.0; slope = 0.0; intercept = 0.0;
+    for (int i = 0; i < col; i++) {
+        element_vec.push_back(Y[row_idx][i]);
+        sum += element_vec[count];
+        count++;
+    }
+    mean = sum / count;
+    int check = 1;
+    if (check == 0) {
+        for (int i = 0; i < count; i++) {
+            residual_vec.push_back(element_vec[i] - mean);
+            squared_residual_sum += residual_vec[i] * residual_vec[i];
+        }
+    }
+    else if (check == 1) {
+        for (int i = 0; i < count; i++) {
+            residual_vec.push_back(element_vec[i] - mean);
+        }
+    }
+    else {
+        std::cout << "Check your data is snp or pheno" << std::endl;
+        exit(1);
+    }
+}
+
 double input_MS::cal_estimate(input_MS* pheno) { //only use snp instance
     double sr_pr_multiply_sum = 0.0;
 
@@ -186,12 +212,12 @@ void inputMS2(std::string snp_p, std::string pheno_p) {
     std::ifstream snp(snp_p); // row : SNP   col : indi || x
     std::ifstream pheno(pheno_p); // row : pheno or expression col : indi || y
 
+    clock_t start, end;
+    double result;
 
     int line_num = 0; double beta = 0.0; double zsc = 0.0;
     int pheno_num = 0;
     std::string temp = "";
-    std::ofstream inputMS("inputMS_cpp.txt"); inputMS.precision(15);
-    std::ofstream p_test("p_test_cpp.txt"); p_test.precision(15);
 
     int snp_check = 0;
     long double p_val = 0.0;
@@ -216,54 +242,102 @@ void inputMS2(std::string snp_p, std::string pheno_p) {
         std::vector<double> std_;
         getline(snp, temp);
         if (temp != "") {
-            if (line_num > 1) {
-                p_test << "\n";
-                inputMS << "\n";
-            }
             input_MS* snp_c = new input_MS(temp, 0);
 
-            inputMS << line_num;
 
             pheno_num = 0;
             for(int i = 0; i < y_row; i++){
                 pheno_num++;
-                    inputMS << " ";
-                    if (pheno_num != 1) {
-                        p_test << " ";
-                    }
                    
                     input_MS* pheno_c = new input_MS(Y, i, y_col);
                     beta = snp_c->cal_estimate(pheno_c);
-                    //std::cout << p_value(abc, snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c)) << std::endl; //  p-value
-                    //std::cout << std::endl;
-                    //std::cout << "beta =" << beta <<std::endl;
-                    //std::cout << "p value =" << p_value(boost::math::students_t_distribution<double>(snp_c->count - 2), snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c)) * 2 << std::endl;
                     p_val = p_value(boost::math::students_t_distribution<double>(snp_c->count - 2), snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c)) * 2;
                     zsc = zscore(p_val / 2, snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c));
 
-                    //std::cout.precision(15);
-                    //std::cout << "Estimate =" << snp_c->cal_estimate(pheno_c) << std::endl; // coeff
-                    //std::cout << "Std. Error =" << snp_c->cal_RSE(pheno_c) << std::endl; // Std. Error
-                    //std::cout << "t value =" << snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c) << std::endl; //t-value
-                    //std::cout << "qnorm = " << std::abs(boost::math::quantile(boost::math::normal_distribution<double>(0, 1), p_value(boost::math::students_t_distribution<double>(snp_c->count - 2), snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c)))) << std::endl;
-                    //std::cout << "beta = " << beta << std::endl;
-                    //std::cout << "zscore =" << zsc << std::endl;
-                    p_test << p_val;
                     P_val(i) = p_val;
-                    inputMS << beta << " " << beta / zsc;
                     betas.push_back(beta); std_.push_back(1.0 / std::pow((beta / zsc), 2));
                     delete pheno_c;
                 
             }
+
+
             computeMvaluesMCMC(betas, std_, 1000000, pheno_num, temp, Y, P_val); //1000000 is samplenumber;
-            
+
+
+
             delete snp_c;
         }
     }
-    p_test.close();
-    inputMS.close();
     snp.close();
 }
+
+void inputMS3(std::string snp_p, std::string pheno_p) {
+    std::ifstream snp(snp_p); // row : SNP   col : indi || x
+    std::ifstream pheno(pheno_p); // row : pheno or expression col : indi || y
+
+    int line_num = 0; double beta = 0.0; double zsc = 0.0;
+    int pheno_num = 0;
+    std::string temp = "";
+
+    int snp_check = 0;
+    long double p_val = 0.0;
+    if (!snp.is_open()) {
+        std::cout << "snp file is not exist" << std::endl;
+    }
+    if (!pheno.is_open()) {
+        std::cout << "pheno file is not exist" << std::endl;
+    }
+
+    int y_row = count_matrix_row(pheno); int y_col = count_matrix_col(pheno);
+    Eigen::MatrixXd Y = read_mat(pheno, y_row, y_col);
+    Eigen::ArrayXd P_val;
+    pheno.close();
+
+    while (!snp.eof()) { //snp이랑 pheno를 거꾸로 하면 해결!
+        P_val = Eigen::ArrayXd(y_row);
+        std::cout << line_num << std::endl;
+        line_num++;
+        double* betas = new double[y_row];
+        double* std_ = new double[y_row];
+        double* std_tm = new double[y_row];
+        double* std_tmm = new double[y_row];
+        double* std_logt = new double[y_row];
+        double* logProbNullPoints_ = new double[y_row];
+        getline(snp, temp);
+        if (temp != "") {
+            input_MS* snp_c = new input_MS(temp, 0);
+            for (int i = 0; i < y_row; i++) {
+                input_MS* pheno_c = new input_MS(Y, i, y_col);
+                beta = snp_c->cal_estimate(pheno_c);
+                p_val = p_value(boost::math::students_t_distribution<double>(snp_c->count - 2), snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c)) * 2;
+                zsc = zscore(p_val / 2, snp_c->cal_estimate(pheno_c) / snp_c->cal_RSE(pheno_c));
+                P_val(i) = p_val;
+                betas[i] = beta; std_[i] = 1.0 / std::pow((beta / zsc), 2);
+                std_tm[i] = std_[i] * beta;
+                std_tmm[i] = std_tm[i] * beta;
+                std_logt[i] = std::log(std_[i]);
+                logProbNullPoints_[i] = std_logt[i] - std_[i] * beta * beta / 2;
+                delete pheno_c;
+            }
+            //std::log(std_[i]) - std_[i] * betas[i] * betas[i] / 2;
+            //,double* std_tm, double* std_tmm, double* std_logt,
+
+            computeMvaluesMCMC2(betas, std_,std_tm, std_tmm, std_logt, logProbNullPoints_, 1000000, y_row, temp, Y, P_val); //1000000 is samplenumber;
+
+
+            delete snp_c;
+        }
+        delete[] betas;
+        delete[] std_;
+        delete[] std_tm;
+        delete[] std_tmm;
+        delete[] std_logt;
+        delete[] logProbNullPoints_;
+
+    }
+    snp.close();
+}
+
 
 void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, int sample, int pheno_num, std::string X_line, Eigen::MatrixXd& Y,
                                                                                                                                             Eigen::ArrayXd& P_val, int seed) {
@@ -366,6 +440,7 @@ void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, i
         }
     }
 
+
     int k_size = 0;
     Eigen::MatrixXd K = Eigen::MatrixXd(pheno_num, Y.cols());
     for (int i = 0; i < pheno_num; i++) {
@@ -390,6 +465,194 @@ void computeMvaluesMCMC(std::vector<double>& betas, std::vector<double>& std_, i
         }
         NICE << "\n";
     }
+}
+
+void computeMvaluesMCMC2(double* betas, double* std_,double* std_tm, double* std_tmm, double* std_logt, double* logProbNullPoints_, int sample, int pheno_num, std::string X_line, Eigen::MatrixXd& Y,
+    Eigen::ArrayXd& P_val, int seed) {
+
+    clock_t start, end;
+    double result;
+
+
+    int maxNumFlip = 1;
+    maxNumFlip = (std::floor(0.1 * pheno_num) > 1) ? std::floor(0.1 * pheno_num) : 1;
+    //std -> ts 로 변환하는 작업이 필요. 아래 코드는 되어있다고 가정 위에서 고치거나 여기서 수정
+    int* H1 = new int[pheno_num]; //true false;
+    int* tmp = new int[pheno_num];
+    int* shuffleBuffer = new int[pheno_num];
+
+    double* logPriorConfig = new double[pheno_num];;
+    int* accumCntH0 = new int[pheno_num]; int* accumCntH1 = new int[pheno_num];
+
+    ran.seed(seed);
+
+    int numH1 = 0;
+    long int burninCount = 1000;
+    long int chainCount = 0;
+    for (int i = 0; i < pheno_num; i++) {
+        logPriorConfig[i] = boost::math::beta(i + 1.0, pheno_num - (double)i + 1.0) - boost::math::beta(1.0, 1.0);
+        accumCntH0[i]= 0; accumCntH1[i] = 0;
+
+        tmp[i] = 0;
+        H1[i] = makeRandomInteger(1); numH1 += H1[i];
+        shuffleBuffer[i] = i;
+    }
+
+
+    start = clock();
+
+
+    while (chainCount < sample) {
+        double currentLogProb = observationLogLikelihood(betas, std_,std_tm, std_tmm, std_logt, logProbNullPoints_, H1, numH1, pheno_num) + logPriorConfig[numH1];
+        if (makeRandomDouble() > 0.01) {
+            // Usual jump
+            int numFlip = (makeRandomInteger(maxNumFlip) + 1 > pheno_num) ? pheno_num : makeRandomInteger(maxNumFlip) + 1;
+
+            for (int i = 0; i < numFlip; i++) {
+                int pick = makeRandomInteger(pheno_num - i - 1);
+                //   std::cout << "test = " << i + pick << std::endl;
+                int t = shuffleBuffer[i];
+                shuffleBuffer[i] = shuffleBuffer[i + pick];
+                shuffleBuffer[i + pick] = t;
+
+                int j = shuffleBuffer[i];
+                H1[j] = !H1[j];
+                numH1 += H1[j] ? 1 : -1;
+            }
+            //for (int i = 0; i < numFlip; i++) {
+            //    int j = shuffleBuffer[i];
+            //    H1[j] = !H1[j];
+            //    numH1 += H1[j] ? 1 : -1;
+            //}
+
+            double nextLogProb = observationLogLikelihood(betas, std_, std_tm, std_tmm, std_logt, logProbNullPoints_, H1, numH1, pheno_num) + logPriorConfig[numH1];
+
+            if (nextLogProb > currentLogProb || makeRandomDouble() < std::exp(nextLogProb - currentLogProb)) {
+                // Move
+                currentLogProb = nextLogProb;
+            }
+            else {
+                // Stay ... revert back
+                for (int i = 0; i < numFlip; i++) {
+                    int j = shuffleBuffer[i];
+                    H1[j] = !H1[j];
+                    numH1 += H1[j] ? 1 : -1;
+                }
+            }
+        }
+        else {
+            // Randomization move
+            int tmpNumH1 = 0;
+            for (int i = 0; i < pheno_num; i++) {
+                tmp[i] = makeRandomInteger(1);
+                if (tmp[i]) tmpNumH1++;
+            }
+            double nextLogProb = observationLogLikelihood(betas, std_, std_tm, std_tmm, std_logt, logProbNullPoints_, tmp, tmpNumH1, pheno_num) + logPriorConfig[tmpNumH1];
+            if (nextLogProb > currentLogProb || makeRandomDouble() < std::exp(nextLogProb - currentLogProb)) {
+                // Move 
+                for (int i = 0; i < pheno_num; i++) {
+                    H1[i] = tmp[i];
+                }
+                numH1 = tmpNumH1;
+                currentLogProb = nextLogProb;
+            }
+            else {
+                // Stay ...
+            }
+        }
+
+        // Are we still in Burn-in?
+        if (burninCount > 0) {
+            burninCount--;
+        }
+        else {
+            for (int i = 0; i < pheno_num; i++) {
+                if (H1[i]) {
+                    accumCntH1[i]++;
+                }
+                else {
+                    accumCntH0[i]++;
+                }
+            }
+            chainCount++;
+        }
+
+    }
+
+    end = clock();
+
+    result = (double)(end - start);
+
+    std::cout << "working time: " << ((result) / CLOCKS_PER_SEC) << " seconds" << std::endl;
+
+
+    int k_size = 0;
+    int y_col = Y.cols();
+    std::vector<long double*> K;
+    // Eigen::MatrixXd K = Eigen::MatrixXd(pheno_num, Y.cols());
+    for (int i = 0; i < pheno_num; i++) {
+        double mvalue = (double)accumCntH1[i] / (accumCntH0[i] + accumCntH1[i]);
+        //mvalues_.add(mvalue);
+        if (mvalue < 0.5) {
+            long double sum = 0.0;
+            long double mean = 0.0;
+            long double deviation = 0.0;
+            long double* temp = new long double[y_col];
+            for (int j = 0; j < y_col; j++) {
+                sum += Y(i,j);
+            }
+            mean = sum / y_col;
+
+            for (int j = 0; j < y_col; j++) {
+                double temp = Y(i, j) - mean;
+                deviation += temp * temp;
+            }
+            for (int j = 0; j < y_col; j++) {
+                temp[j] = (Y(i,j) - mean) / std::sqrt(deviation / (y_col - 1));
+            }
+            K.push_back(temp);
+        }
+    }
+
+
+    if (K.size() >= 10) {
+        //Eigen::MatrixXd cov_mat = cov(K);
+        //emma(X, Y, cov_mat, NICE);
+        Eigen::MatrixXd Ki = Eigen::MatrixXd(y_col, y_col);
+        for (int i = 0; i < y_col; i++) {
+            for (int j = i; j < y_col; j++) {
+                double cov_ij = 0.0;
+                double sum_i = 0.0; double sum_j = 0.0;
+                double mean_i = 0.0; double mean_j = 0.0;
+                for (int k = 0; k < K.size(); k++) {
+                    sum_i += K[k][i]; sum_j = K[k][j];
+                }
+                mean_i = sum_i / pheno_num; mean_j = sum_j / pheno_num;
+                for (int k = 0; k < K.size(); k++) {
+                    cov_ij += (K[k][i]-mean_i) * (K[k][j]-mean_j);
+                }
+                Ki(i, j) = cov_ij/(pheno_num-1);
+                Ki(j, i) = Ki(i, j);
+            }
+        }
+        Eigen::MatrixXd X = read_mat(X_line, Y.cols());
+  
+
+        emma(X, Y, Ki, NICE);
+    }
+    else {
+        for (int i = 0; i < Y.rows(); NICE << " ", i++) {
+            NICE << P_val(i);
+        }
+        NICE << "\n";
+    }
+
+    delete[] H1;
+    delete[] tmp;
+    delete[] shuffleBuffer;
+    delete[] logPriorConfig;
+    delete[] accumCntH0;
+    delete[] accumCntH1;
 
 }
 
@@ -430,6 +693,43 @@ double observationLogLikelihood(std::vector<double>& betas, std::vector<double>&
     return logProbNullPoints + logProbAltPoints;
 }
 
+double observationLogLikelihood(double* betas, double* std_,double* std_tm, double* std_tmm, double* std_logt, double* logProbNullPoints_, int* H1, int numH1, int n_size) {
+    int n = n_size;
+    double logProbNullPoints = 0;
+    double logProbAltPoints = 0;
+
+    for (int i = 0; i < n; i++) {
+        if (!H1[i]) logProbNullPoints += logProbNullPoints_[i];
+            //std::log(std_[i]) - std_[i] * betas[i] * betas[i] / 2;
+    }
+    if (numH1 > 0) {
+        double sum_t = 0.0;
+        double sum_tm = 0.0;
+        double sum_tmm = 0.0;
+        double sum_logt = 0.0;
+        for (int i = 0; i < n; i++) {
+            if (H1[i]) {
+                sum_t += std_[i];
+                sum_tm += std_tm[i];
+                sum_tmm += std_tmm[i];
+                sum_logt += std_logt[i];
+            }
+        }
+        double betaJoint = sum_tm / sum_t;
+        double tJoint = sum_t;
+        double tFinal = 1.0 / ((1.0 / tJoint) + 0.04);
+        double logScaleFactor =
+            -(numH1 - 1) * log_sqrt2pi + 0.5 * sum_logt - 0.5 * std::log(sum_t)
+            - (sum_tmm - sum_tm * sum_tm / sum_t) / 2;
+        double logJointPDF =
+            0.5 * std::log(tFinal) - log_sqrt2pi - tFinal * betaJoint * betaJoint / 2;
+        logProbAltPoints = logJointPDF + logScaleFactor;
+    }
+
+    return logProbNullPoints + logProbAltPoints;
+}
+
+
 int makeRandomInteger(int number) {
     std::uniform_int_distribution<int> dis(0, number);
     return dis(ran);
@@ -457,6 +757,26 @@ Eigen::MatrixXd read_mat(std::ifstream& input_file, int row, int col) {
     }
     return ret_mat;
 }
+
+double** read_mat_darray(std::ifstream& input_file, int row, int col) {
+
+    std::string read_buffer;
+    std::string token;
+    std::stringstream stream;
+    double** ret_mat = new double*[row];
+    for (int i = 0; i < row; i++) { //row
+        ret_mat[i] = new double[col];
+        std::getline(input_file, read_buffer);
+        stream.str(read_buffer);
+        for (int j = 0; j < col; j++) { //col
+            stream >> token;
+            ret_mat[i][j] = std::stold(token);
+        }
+        stream.clear();  //for coursor reset
+    }
+    return ret_mat;
+}
+
 
 Eigen::MatrixXd read_mat(std::string X, int col) {
 
@@ -666,7 +986,6 @@ long double p_value(boost::math::students_t_distribution<double> t_dist, long do
 }
 
 void emma(Eigen::MatrixXd& X, Eigen::MatrixXd& Y, Eigen::MatrixXd& K, std::ofstream& out) {
-
     REMLE rem = REMLE();
 
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig_L;
@@ -702,6 +1021,8 @@ void emma(Eigen::MatrixXd& X, Eigen::MatrixXd& Y, Eigen::MatrixXd& K, std::ofstr
     }
     out << "\n";
 }
+
+
 
 Eigen::MatrixXd cov(Eigen::MatrixXd& mat) {
     Eigen::MatrixXd centered = mat.rowwise() - mat.colwise().mean();
